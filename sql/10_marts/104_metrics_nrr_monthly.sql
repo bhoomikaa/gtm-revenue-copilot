@@ -1,9 +1,15 @@
 -- 104_metrics_nrr_monthly.sql
--- Purpose: Monthly Net Revenue Retention (NRR) across existing customer base
+-- Purpose: Monthly Net Revenue Retention (NRR) excluding incomplete months
 
 create or replace table GTM_COPILOT.MARTS.METRICS_NRR_MONTHLY as
 
-with base as (
+with max_valid_month as (
+    select max(month) as max_month
+    from GTM_COPILOT.MARTS.FCT_MRR_COMPLETE
+    where total_mrr > 0
+),
+
+base as (
     select
         account_id,
         month,
@@ -13,7 +19,6 @@ with base as (
 ),
 
 eligible as (
-    -- "Existing customers" for a month are those who had revenue in the previous month
     select
         account_id,
         month,
@@ -24,13 +29,12 @@ eligible as (
 )
 
 select
-    month,
-    sum(previous_mrr) as start_mrr,
-    sum(total_mrr) as end_mrr,
-    case
-        when sum(previous_mrr) = 0 then null
-        else round( (sum(total_mrr) / sum(previous_mrr)) * 100, 2 )
-    end as nrr_pct
-from eligible
-group by month
-order by month;
+    e.month,
+    sum(e.previous_mrr) as start_mrr,
+    sum(e.total_mrr) as end_mrr,
+    round((sum(e.total_mrr) / sum(e.previous_mrr)) * 100, 2) as nrr_pct
+from eligible e
+join max_valid_month m
+    on e.month <= m.max_month
+group by e.month
+order by e.month;
